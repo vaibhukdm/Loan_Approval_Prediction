@@ -1,0 +1,104 @@
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.metrics import accuracy_score
+from google.colab import drive
+
+# Mount Google Drive
+drive.mount('/content/drive')
+
+# Set the path to your dataset
+train_path = '/content/Training Dataset.csv'
+test_path = '/content/Test Dataset.csv'
+submission_path = '/content/Sample_Submission.csv'
+
+# Load datasets
+train = pd.read_csv(train_path)
+test = pd.read_csv(test_path)
+submission = pd.read_csv(submission_path)
+
+# Display the first few rows of the dataset
+print(train.head())
+print(test.head())
+print(submission.head())
+
+# Data Preprocessing
+# Fill missing values
+
+# List of columns with missing values
+cols_with_missing = ['Gender', 'Married', 'Dependents', 'Self_Employed', 'LoanAmount', 'Loan_Amount_Term', 'Credit_History']
+
+# Impute missing values for categorical columns with mode
+cat_cols = ['Gender', 'Married', 'Dependents', 'Self_Employed', 'Credit_History']
+imputer = SimpleImputer(strategy='most_frequent')
+train[cat_cols] = imputer.fit_transform(train[cat_cols])
+test[cat_cols] = imputer.transform(test[cat_cols])
+
+# Impute missing values for numerical columns with median
+num_cols = ['LoanAmount', 'Loan_Amount_Term']
+imputer = SimpleImputer(strategy='median')
+train[num_cols] = imputer.fit_transform(train[num_cols])
+test[num_cols] = imputer.transform(test[num_cols])
+
+# Feature Engineering
+# Create a new feature for Total Income
+train['Total_Income'] = train['ApplicantIncome'] + train['CoapplicantIncome']
+test['Total_Income'] = test['ApplicantIncome'] + test['CoapplicantIncome']
+
+# Log transformation of LoanAmount and Total_Income
+train['LoanAmount_log'] = np.log1p(train['LoanAmount'])
+test['LoanAmount_log'] = np.log1p(test['LoanAmount'])
+
+train['Total_Income_log'] = np.log1p(train['Total_Income'])
+test['Total_Income_log'] = np.log1p(test['Total_Income'])
+
+# Drop unneeded columns
+train.drop(['Loan_ID', 'ApplicantIncome', 'CoapplicantIncome', 'LoanAmount', 'Total_Income'], axis=1, inplace=True)
+test.drop(['Loan_ID', 'ApplicantIncome', 'CoapplicantIncome', 'LoanAmount', 'Total_Income'], axis=1, inplace=True)
+
+# Encode categorical features
+cat_cols = ['Gender', 'Married', 'Dependents', 'Education', 'Self_Employed', 'Property_Area', 'Loan_Status']
+for col in cat_cols:
+    lbl = LabelEncoder()
+    train[col] = lbl.fit_transform(train[col].astype(str))
+    if col != 'Loan_Status':
+        test[col] = lbl.transform(test[col].astype(str))
+
+# Split the data into features and target variable
+X = train.drop('Loan_Status', axis=1)
+y = train['Loan_Status']
+
+# Split the data into training and validation sets
+X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train models
+# Random Forest Classifier
+rf = RandomForestClassifier(random_state=42)
+rf.fit(X_train, y_train)
+rf_preds = rf.predict(X_valid)
+rf_accuracy = accuracy_score(y_valid, rf_preds)
+print(f'Random Forest Accuracy: {rf_accuracy}')
+
+# Gradient Boosting Classifier
+gb = GradientBoostingClassifier(random_state=42)
+gb.fit(X_train, y_train)
+gb_preds = gb.predict(X_valid)
+gb_accuracy = accuracy_score(y_valid, gb_preds)
+print(f'Gradient Boosting Accuracy: {gb_accuracy}')
+
+# Select the best model
+best_model = rf if rf_accuracy > gb_accuracy else gb
+
+# Predict on the test set
+test_preds = best_model.predict(test)
+
+# Prepare the submission file
+submission['Loan_Status'] = test_preds
+submission['Loan_Status'] = submission['Loan_Status'].map({1: 'Y', 0: 'N'})
+submission.to_csv('/content/Sample_Submission.csv', index=False)
+
+print("Submission file saved successfully!")
